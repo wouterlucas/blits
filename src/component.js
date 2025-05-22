@@ -35,6 +35,7 @@ import setupComponent from './component/setup/index.js'
 import components from './components/index.js'
 
 import { plugins } from './plugin.js'
+import { release, acquire } from './lib/pool/index.js'
 
 // object to store global components
 let globalComponents
@@ -153,6 +154,8 @@ const Component = (name = required('name'), config = required('config')) => {
         effect,
         getRaw,
         Log,
+        release,
+        acquire,
       ]) || []
 
     // create a reference to the wrapper element of the component (i.e. the root Element of the component)

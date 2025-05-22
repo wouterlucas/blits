@@ -68,6 +68,8 @@ export default function (templateObject = { children: [] }, devMode = false) {
       'effect',
       'getRaw',
       'Log',
+      'release',
+      'acquire',
       ctx.renderCode.join('\n')
     ),
     effects: ctx.effectsCode.map(
@@ -305,7 +307,29 @@ const generateComponentCode = function (
       component${counter} = componentType
     }
 
-    ${elm} = component${counter}.call(null, {props: props${counter}}, ${parent}, component)
+    // ${elm} = component${counter}.call(null, {props: props${counter}}, ${parent}, component)
+
+    // Component pool changes
+    const createFn${counter} = () => component${counter}.call(
+      null,
+      { props: props${counter} },
+      ${parent},
+      component
+    )
+    ${elm} = acquire(component, props${counter}, ${parent}, createFn${counter})
+
+    /* ── fast re-bind when a pooled instance is reused ───────── */
+    // if (${elm}[Symbol.for('reuse')]) {
+    //   // Optional component-level hook for deep reset
+    //   ${elm}[Symbol.for('reuse')](props${counter}, ${parent}, component)
+    // } else {
+    //   // Shallow prop reset (tight loop, no spreads)
+    //   const _p = ${elm}[Symbol.for('props')]
+    //   for (const k in _p) _p[k] = null        // clear old refs
+    //   for (const k in props${counter}) _p[k] = props${counter}[k]
+    //   ${elm}['parent'] = ${parent}
+    // }
+
 
     if (${elm}[Symbol.for('slots')][0]) {
       parent = ${elm}[Symbol.for('slots')][0]
@@ -341,6 +365,12 @@ const generateComponentCode = function (
   }
 }
 
+/**
+ * Generate for loop render code
+ *
+ * @param {object} templateObject
+ * @param {import("@/component").BlitsComponent} parent - Parent component
+ */
 const generateForLoopCode = function (templateObject, parent) {
   const forLoop = templateObject[':for']
   delete templateObject[':for']
@@ -394,6 +424,10 @@ const generateForLoopCode = function (templateObject, parent) {
 
   const forStartCounter = counter
 
+  // Begin the forloop function definition
+  // Resolve the range of the keys to be collected
+  // Walk backwards through the collection to collect the keys
+  // and set the index variable
   ctx.renderCode.push(`
     const created${forStartCounter} = []
 
@@ -430,6 +464,7 @@ const generateForLoopCode = function (templateObject, parent) {
   // in the right spot
   const indexToInjectDestroyCode = ctx.renderCode.length
 
+  // Begin item creation loop
   ctx.renderCode.push(`
       created.length = 0
       const length = rawCollection.length
@@ -457,10 +492,12 @@ const generateForLoopCode = function (templateObject, parent) {
     templateObject.ref = '$__ref'
   }
 
+  // Track created key
   ctx.renderCode.push(`
         created.push(scope.key)
   `)
 
+  // Generate the code for the template object
   if (
     templateObject[Symbol.for('componentType')] === 'Element' ||
     templateObject[Symbol.for('componentType')] === 'Slot' ||
@@ -536,10 +573,14 @@ const generateForLoopCode = function (templateObject, parent) {
   const forEndCounter = counter
 
   for (let i = forStartCounter; i <= forEndCounter; i++) {
+    // destroyCode.push(`
+    //       elms[${i}][key] && elms[${i}][key].destroy()
+    //       delete elms[${i}][key]
+    //   `)
     destroyCode.push(`
-          elms[${i}][key] && elms[${i}][key].destroy()
-          delete elms[${i}][key]
-      `)
+        elms[${i}][key] && release(elms[${i}][key])
+        delete elms[${i}][key]
+    `)
   }
   destroyCode.push(`
       }
